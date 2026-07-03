@@ -379,6 +379,16 @@
   .modal-actions .primary:hover{background:var(--coral);border-color:var(--coral);}
   .modal-actions button:not(.primary):hover{border-color:var(--muted);}
 
+  .visibility-toggle{display:flex;gap:8px;margin-bottom:8px;}
+  .vis-opt{
+    flex:1; display:flex; align-items:center; justify-content:center; gap:6px;
+    padding:10px; border-radius:12px; border:1px solid var(--line);
+    background:var(--paper); color:var(--muted); font-size:13px; font-weight:600;
+  }
+  .vis-opt.active{background:var(--ink); color:#fff; border-color:var(--ink);}
+  .visibility-hint{font-size:11.5px; color:var(--muted); margin:0 0 18px;}
+  .room-lock{color:var(--muted); flex:0 0 auto; display:flex; align-items:center;}
+
   /* ----- Call overlays ----- */
   .call-banner, .call-active-bar{
     position:fixed; left:0; right:0; z-index:60;
@@ -569,6 +579,9 @@
             <span class="room-name" id="active-room-name"></span>
           </div>
           <div class="appbar-actions">
+            <button class="icon-btn" id="invite-btn" title="친구 초대">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="1.8"/><path d="M19 8v6M22 11h-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            </button>
             <button class="call-btn" id="call-start-btn" title="음성통화">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1C11 21 3 13 3 4c0-.6.4-1 1-1h3.2c.6 0 1 .4 1 1 0 1.2.2 2.4.6 3.6.1.4 0 .8-.2 1L6.6 10.8z" fill="currentColor"/></svg>
             </button>
@@ -604,6 +617,17 @@
   <div class="modal-card">
     <h3>새 채팅방 만들기</h3>
     <input id="new-room-input" type="text" placeholder="채팅방 이름" maxlength="40" />
+    <div class="visibility-toggle" id="new-room-visibility">
+      <button type="button" class="vis-opt active" data-vis="public">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M3 12h18M12 3c2.5 2.5 4 5.7 4 9s-1.5 6.5-4 9c-2.5-2.5-4-5.7-4-9s1.5-6.5 4-9z" stroke="currentColor" stroke-width="1.8"/></svg>
+        <span>공개</span>
+      </button>
+      <button type="button" class="vis-opt" data-vis="private">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="9" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M8 11V8a4 4 0 018 0v3" stroke="currentColor" stroke-width="1.8"/></svg>
+        <span>비공개</span>
+      </button>
+    </div>
+    <p class="visibility-hint" id="new-room-visibility-hint">누구나 목록에서 보고 들어올 수 있어요.</p>
     <div class="modal-actions">
       <button id="new-room-cancel">취소</button>
       <button class="primary" id="new-room-confirm">만들기</button>
@@ -622,6 +646,17 @@
     <div class="modal-actions">
       <button id="profile-cancel">취소</button>
       <button class="primary" id="profile-confirm">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- 친구 초대 모달 -->
+<div class="modal-overlay" id="invite-modal">
+  <div class="modal-card">
+    <h3>친구 초대</h3>
+    <div id="invite-list" style="max-height:320px;overflow-y:auto;margin-bottom:16px;"></div>
+    <div class="modal-actions">
+      <button id="invite-close">닫기</button>
     </div>
   </div>
 </div>
@@ -663,7 +698,7 @@
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
   import {
     getFirestore, collection, addDoc, doc, setDoc, updateDoc, deleteDoc, getDoc, getDocs,
-    query, orderBy, limit, onSnapshot, serverTimestamp, where, writeBatch
+    query, orderBy, limit, onSnapshot, serverTimestamp, where, writeBatch, arrayUnion
   } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
   const firebaseConfig = {
@@ -697,6 +732,9 @@
   const newRoomInput = document.getElementById('new-room-input');
   const newRoomCancel = document.getElementById('new-room-cancel');
   const newRoomConfirm = document.getElementById('new-room-confirm');
+  const newRoomVisibility = document.getElementById('new-room-visibility');
+  const newRoomVisibilityHint = document.getElementById('new-room-visibility-hint');
+  let newRoomVisValue = 'public';
 
   const editProfileBtn = document.getElementById('edit-profile-btn');
   const profileModal = document.getElementById('profile-modal');
@@ -704,6 +742,11 @@
   const profilePhoneInput = document.getElementById('profile-phone-input');
   const profileCancel = document.getElementById('profile-cancel');
   const profileConfirm = document.getElementById('profile-confirm');
+
+  const inviteBtn = document.getElementById('invite-btn');
+  const inviteModal = document.getElementById('invite-modal');
+  const inviteList = document.getElementById('invite-list');
+  const inviteClose = document.getElementById('invite-close');
 
   const chatEmptyState = document.getElementById('chat-empty-state');
   const chatActive = document.getElementById('chat-active');
@@ -786,7 +829,9 @@
       appScreen.style.display = 'none';
       loginScreen.style.display = 'flex';
       cleanupRoomView();
-      if (unsubRooms) { unsubRooms(); unsubRooms = null; }
+      if (unsubPublicRooms) { unsubPublicRooms(); unsubPublicRooms = null; }
+      if (unsubMyRooms) { unsubMyRooms(); unsubMyRooms = null; }
+      publicRoomsCache = {}; myRoomsCache = {};
       if (unsubIncomingCalls) { unsubIncomingCalls(); unsubIncomingCalls = null; }
       if (unsubFriends) { unsubFriends(); unsubFriends = null; }
       if (unsubMoments) { unsubMoments(); unsubMoments = null; }
@@ -851,18 +896,45 @@
     } finally { profileConfirm.disabled = false; }
   });
 
-  /* ---------- Room list ---------- */
+  /* ---------- Room list ----------
+     공개방(visibility != 'private')과 내가 멤버로 속한 방(비공개 그룹방 + 모든 DM)을
+     각각 구독해서 합친 뒤 목록을 그린다. */
+  let publicRoomsCache = {};
+  let myRoomsCache = {};
+  let unsubPublicRooms = null;
+  let unsubMyRooms = null;
+
   function listenRooms() {
-    const q = query(collection(db, 'rooms'), orderBy('lastMessageAt', 'desc'), limit(100));
-    unsubRooms = onSnapshot(q, (snap) => {
-      rooms = [];
-      snap.forEach(d => rooms.push({ id: d.id, ...d.data() }));
-      renderRoomList();
-      if (activeRoomId) {
-        activeRoomData = rooms.find(r => r.id === activeRoomId) || null;
-        if (activeRoomData) activeRoomName.textContent = displayNameForRoom(activeRoomData);
-      }
+    const qPublic = query(collection(db, 'rooms'), where('visibility', '!=', 'private'), limit(100));
+    unsubPublicRooms = onSnapshot(qPublic, (snap) => {
+      publicRoomsCache = {};
+      snap.forEach(d => publicRoomsCache[d.id] = { id: d.id, ...d.data() });
+      mergeAndRenderRooms();
     });
+
+    const qMine = query(collection(db, 'rooms'), where('members', 'array-contains', currentUser.uid), limit(100));
+    unsubMyRooms = onSnapshot(qMine, (snap) => {
+      myRoomsCache = {};
+      snap.forEach(d => myRoomsCache[d.id] = { id: d.id, ...d.data() });
+      mergeAndRenderRooms();
+    });
+  }
+
+  function mergeAndRenderRooms() {
+    const merged = { ...publicRoomsCache, ...myRoomsCache };
+    rooms = Object.values(merged).sort((a, b) => {
+      const ta = a.lastMessageAt && a.lastMessageAt.toMillis ? a.lastMessageAt.toMillis() : 0;
+      const tb = b.lastMessageAt && b.lastMessageAt.toMillis ? b.lastMessageAt.toMillis() : 0;
+      return tb - ta;
+    });
+    renderRoomList();
+    if (activeRoomId) {
+      activeRoomData = rooms.find(r => r.id === activeRoomId) || null;
+      if (activeRoomData) {
+        activeRoomName.textContent = displayNameForRoom(activeRoomData);
+        inviteBtn.style.display = activeRoomData.type === 'dm' ? 'none' : 'flex';
+      }
+    }
   }
 
   function displayNameForRoom(room) {
@@ -902,7 +974,17 @@
       row.className = 'room-name-row';
       const nameEl = document.createElement('div');
       nameEl.className = 'room-name';
-      nameEl.textContent = (room.type === 'dm' ? '' : '') + displayName;
+      nameEl.textContent = displayName;
+      if (room.type !== 'dm' && room.visibility === 'private') {
+        const lock = document.createElement('span');
+        lock.className = 'room-lock';
+        lock.title = '비공개 채팅방';
+        lock.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="9" rx="2" stroke="currentColor" stroke-width="2"/><path d="M8 11V8a4 4 0 018 0v3" stroke="currentColor" stroke-width="2"/></svg>';
+        nameEl.prepend(lock);
+        nameEl.style.display = 'flex';
+        nameEl.style.alignItems = 'center';
+        nameEl.style.gap = '4px';
+      }
       const timeEl = document.createElement('div');
       timeEl.className = 'room-time';
       timeEl.textContent = formatShortTime(room.lastMessageAt);
@@ -942,8 +1024,20 @@
   /* ---------- Create / delete room ---------- */
   newRoomBtn.addEventListener('click', () => {
     newRoomInput.value = '';
+    newRoomVisValue = 'public';
+    [...newRoomVisibility.querySelectorAll('.vis-opt')].forEach(b => b.classList.toggle('active', b.dataset.vis === 'public'));
+    newRoomVisibilityHint.textContent = '누구나 목록에서 보고 들어올 수 있어요.';
     newRoomModal.classList.add('show');
     setTimeout(() => newRoomInput.focus(), 50);
+  });
+  newRoomVisibility.addEventListener('click', (e) => {
+    const btn = e.target.closest('.vis-opt');
+    if (!btn) return;
+    newRoomVisValue = btn.dataset.vis;
+    [...newRoomVisibility.querySelectorAll('.vis-opt')].forEach(b => b.classList.toggle('active', b === btn));
+    newRoomVisibilityHint.textContent = newRoomVisValue === 'private'
+      ? '초대한 친구만 보고 들어올 수 있어요.'
+      : '누구나 목록에서 보고 들어올 수 있어요.';
   });
   newRoomCancel.addEventListener('click', () => newRoomModal.classList.remove('show'));
   newRoomModal.addEventListener('click', (e) => { if (e.target === newRoomModal) newRoomModal.classList.remove('show'); });
@@ -957,6 +1051,8 @@
       const ref = await addDoc(collection(db, 'rooms'), {
         name,
         type: 'group',
+        visibility: newRoomVisValue,
+        members: [currentUser.uid],
         createdBy: currentUser.uid,
         createdByName: myProfile.nickname || currentUser.displayName || '익명',
         createdAt: serverTimestamp(),
@@ -1006,6 +1102,7 @@
     chatEmptyState.style.display = 'none';
     chatActive.style.display = 'flex';
     activeRoomName.textContent = activeRoomData ? displayNameForRoom(activeRoomData) : '';
+    inviteBtn.style.display = (activeRoomData && activeRoomData.type === 'dm') ? 'none' : 'flex';
     shell.classList.add('show-chat');
     renderRoomList();
 
@@ -1292,6 +1389,7 @@
         memberInfo[otherUid] = { nickname: otherNickname || '익명', photoURL: otherPhotoURL || '' };
         await setDoc(ref, {
           type: 'dm',
+          visibility: 'private',
           name: otherNickname || '1:1 채팅',
           members: [currentUser.uid, otherUid],
           memberInfo,
@@ -1308,6 +1406,65 @@
     }
     switchTab('chats');
     openRoom(dmId);
+  }
+
+  /* =========================================================
+     그룹 채팅방에 친구 초대
+     ========================================================= */
+  inviteBtn.addEventListener('click', () => {
+    if (!activeRoomId || !activeRoomData) return;
+    renderInviteList();
+    inviteModal.classList.add('show');
+  });
+  inviteClose.addEventListener('click', () => inviteModal.classList.remove('show'));
+  inviteModal.addEventListener('click', (e) => { if (e.target === inviteModal) inviteModal.classList.remove('show'); });
+
+  function renderInviteList() {
+    const uids = Object.keys(myFriends);
+    if (uids.length === 0) {
+      inviteList.innerHTML = '<div class="empty">초대할 친구가 없어요.<br/>먼저 친구를 추가해보세요.</div>';
+      return;
+    }
+    const currentMembers = (activeRoomData && activeRoomData.members) || [];
+    inviteList.innerHTML = '';
+    uids.forEach((uid) => {
+      const f = myFriends[uid];
+      const item = document.createElement('div');
+      item.className = 'friend-item';
+      const av = document.createElement('div');
+      av.className = 'room-avatar';
+      av.textContent = (f.nickname || '?').trim().charAt(0).toUpperCase();
+      const name = document.createElement('div');
+      name.className = 'f-name';
+      name.textContent = f.nickname || '(알수없음)';
+      const btn = document.createElement('button');
+      const already = currentMembers.includes(uid);
+      btn.className = 'f-btn' + (already ? '' : ' chat-btn');
+      btn.textContent = already ? '참여중' : '초대';
+      btn.disabled = already;
+      btn.addEventListener('click', () => inviteToRoom(uid, f.nickname));
+      item.appendChild(av); item.appendChild(name); item.appendChild(btn);
+      inviteList.appendChild(item);
+    });
+  }
+
+  async function inviteToRoom(uid, nickname) {
+    if (!activeRoomId) return;
+    try {
+      await updateDoc(doc(db, 'rooms', activeRoomId), {
+        members: arrayUnion(uid)
+      });
+      await addDoc(collection(db, 'rooms', activeRoomId, 'messages'), {
+        type: 'system',
+        text: `${myProfile.nickname || '누군가'}님이 ${nickname}님을 초대했어요.`,
+        uid: currentUser.uid,
+        createdAt: serverTimestamp()
+      });
+      renderInviteList();
+    } catch (err) {
+      console.error(err);
+      alert('초대에 실패했어요.');
+    }
   }
 
   /* =========================================================
