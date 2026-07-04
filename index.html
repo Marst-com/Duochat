@@ -1484,11 +1484,17 @@
   function listenFriends() {
     if (!currentUser) return;
     if (unsubFriends) unsubFriends();
-    unsubFriends = onSnapshot(collection(db, 'users', currentUser.uid, 'friends'), (snap) => {
-      myFriends = {};
-      snap.forEach(d => myFriends[d.id] = d.data());
-      renderFriendList();
-    });
+    unsubFriends = onSnapshot(
+      collection(db, 'users', currentUser.uid, 'friends'),
+      (snap) => {
+        myFriends = {};
+        snap.forEach(d => myFriends[d.id] = d.data());
+        renderFriendList();
+      },
+      (err) => {
+        console.error('친구 목록을 불러오지 못했어요 (Firestore 규칙을 확인하세요):', err);
+      }
+    );
   }
 
   function renderFriendList() {
@@ -1518,7 +1524,12 @@
       delBtn.style.marginLeft = '6px';
       delBtn.addEventListener('click', async () => {
         if (!confirm(`${f.nickname}님을 친구에서 삭제할까요?`)) return;
-        await deleteDoc(doc(db, 'users', currentUser.uid, 'friends', uid));
+        try {
+          await deleteDoc(doc(db, 'users', currentUser.uid, 'friends', uid));
+        } catch (err) {
+          console.error(err);
+          alert('친구 삭제에 실패했어요.');
+        }
       });
       item.appendChild(av); item.appendChild(name); item.appendChild(chatBtn); item.appendChild(delBtn);
       friendListEl.appendChild(item);
@@ -1557,12 +1568,22 @@
         addBtn.textContent = already ? '추가됨' : '친구 추가';
         addBtn.disabled = already;
         addBtn.addEventListener('click', async () => {
-          addBtn.disabled = true; addBtn.textContent = '추가됨';
-          await setDoc(doc(db, 'users', currentUser.uid, 'friends', d.id), {
-            nickname: data.nickname || '익명',
-            photoURL: data.photoURL || '',
-            addedAt: serverTimestamp()
-          });
+          addBtn.disabled = true;
+          const prevText = addBtn.textContent;
+          addBtn.textContent = '추가 중…';
+          try {
+            await setDoc(doc(db, 'users', currentUser.uid, 'friends', d.id), {
+              nickname: data.nickname || '익명',
+              photoURL: data.photoURL || '',
+              addedAt: serverTimestamp()
+            });
+            addBtn.textContent = '추가됨';
+          } catch (err) {
+            console.error(err);
+            alert('친구 추가에 실패했어요. 잠시 후 다시 시도해주세요.');
+            addBtn.disabled = false;
+            addBtn.textContent = prevText;
+          }
         });
         item.appendChild(av); item.appendChild(name); item.appendChild(addBtn);
         friendSearchResults.appendChild(item);
