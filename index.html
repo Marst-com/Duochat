@@ -867,7 +867,6 @@
   let activeRoomData = null;
   let unsubRooms = null;
   let unsubMessages = null;
-  let unsubIncomingCalls = null;
 
   const handledCallIds = new Set();
 
@@ -894,7 +893,6 @@
       myName.textContent = user.displayName || '사용자';
       await loadOrCreateProfile(user);
       listenRooms();
-      listenIncomingCalls();
       listenFriends();
     } else {
       appScreen.style.display = 'none';
@@ -903,7 +901,6 @@
       if (unsubPublicRooms) { unsubPublicRooms(); unsubPublicRooms = null; }
       if (unsubMyRooms) { unsubMyRooms(); unsubMyRooms = null; }
       publicRoomsCache = {}; myRoomsCache = {};
-      if (unsubIncomingCalls) { unsubIncomingCalls(); unsubIncomingCalls = null; }
       if (unsubFriends) { unsubFriends(); unsubFriends = null; }
       if (unsubMoments) { unsubMoments(); unsubMoments = null; }
       momentsLoaded = false;
